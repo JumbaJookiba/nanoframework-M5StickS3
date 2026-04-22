@@ -2,7 +2,7 @@
 // Copyright (c) .NET Foundation and Contributors
 // See LICENSE file in the project root for full license information.
 //
-// M5StickS3 SPI configuration for ST7735S display:
+// M5StickS3 SPI configuration for ST7789P3 display:
 //   SPI bus: SPI2_HOST (FSPI)
 //   CLK:  GPIO13
 //   MOSI: GPIO15

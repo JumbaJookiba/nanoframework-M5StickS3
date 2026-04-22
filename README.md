@@ -11,7 +11,7 @@ The M5StickS3 is a compact development kit based on the ESP32-S3FN8 module with 
 | MCU | ESP32-S3FN8 (dual-core LX7 @ 240 MHz) |
 | Flash | 8 MB OPI Flash (QIO) |
 | PSRAM | 8 MB OPI PSRAM (Octal SPI) |
-| Display | 0.96" TFT ST7735S (80×160 pixels) via SPI |
+| Display | 1.14" TFT ST7789P3 (135×240 pixels) via SPI |
 | IMU | BMI270 6-axis accelerometer/gyroscope via I2C |
 | PMU | AXP2101 power management via I2C |
 | USB | USB-C (native USB, CDC) |
@@ -22,7 +22,7 @@ The M5StickS3 is a compact development kit based on the ESP32-S3FN8 module with 
 
 ## Pin Configuration
 
-### SPI — ST7735S Display
+### SPI — ST7789P3 Display
 
 | Signal | GPIO |
 |--------|------|
@@ -64,10 +64,10 @@ The M5StickS3 is a compact development kit based on the ESP32-S3FN8 module with 
 
 - **PSRAM**: 8 MB OPI PSRAM enabled via `CONFIG_SPIRAM_MODE_OCT=y`
 - **USB CDC**: Native USB for debugging and firmware deployment
-- **SPI**: Configured for ST7735S display (SPI2_HOST / FSPI)
+- **SPI**: Configured for ST7789P3 display (SPI2_HOST / FSPI)
 - **I2C**: Bus 0 (GPIO21/GPIO22) shared by BMI270, AXP2101, and BM8563
 - **GPIO**: Buttons on GPIO35 and GPIO39
-- **Graphics**: nanoFramework.Graphics with ST7735S driver
+- **Graphics**: nanoFramework.Graphics with ST7789P3 driver
 - **WiFi**: 802.11 b/g/n with full networking stack
 - **File System**: LittleFS on internal flash (2 MB config partition)
 - **RTC**: Real-time clock support
