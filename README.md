@@ -4,11 +4,11 @@ nanoFramework custom firmware support for the [M5StickS3](https://docs.m5stack.c
 
 ## Hardware Overview
 
-The M5StickS3 is a compact development kit based on the ESP32-S3FN8 module with the following hardware:
+The M5StickS3 is a compact development kit based on the ESP32-S3-PICO-1-N8R8 module with the following hardware:
 
 | Component | Details |
 |-----------|---------|
-| MCU | ESP32-S3FN8 (dual-core LX7 @ 240 MHz) |
+| MCU | ESP32-S3-PICO-1-N8R8 (dual-core LX7 @ 240 MHz) |
 | Flash | 8 MB OPI Flash (QIO) |
 | PSRAM | 8 MB OPI PSRAM (Octal SPI) |
 | Display | 1.14" TFT ST7789P3 (135×240 pixels) via SPI |
