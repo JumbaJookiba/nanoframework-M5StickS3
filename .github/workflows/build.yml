@@ -167,6 +167,13 @@ jobs:
           }
           EOF
 
+          # targets-community is a git submodule that is not initialized during a
+          # shallow clone. CMake requires the file to exist to parse presets.
+          # M5StickS3 does not inherit from any community preset so a stub suffices.
+          mkdir -p nf-interpreter/targets-community
+          echo '{"version":4,"configurePresets":[]}' \
+            > nf-interpreter/targets-community/CMakePresets.json
+
       - name: Configure M5StickS3 build
         working-directory: nf-interpreter
         run: |
