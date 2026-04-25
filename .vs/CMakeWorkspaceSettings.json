@@ -1,0 +1,4 @@
+{
+  "enableCMake": true,
+  "sourceDirectory": "targets\\esp32\\m5sticks3"
+}
