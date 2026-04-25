@@ -15,6 +15,11 @@ on:
         required: false
         default: 'false'
 
+env:
+  ESP_IDF_VERSION: v5.5.4
+  IDF_PATH: /home/runner/.espressif/frameworks/esp-idf-v5.5.4
+  NF_INTERPRETER_REF: v1.9.0
+
 jobs:
   build:
     name: Build nanoFramework firmware for M5StickS3
@@ -32,6 +37,7 @@ jobs:
           repository: nanoframework/nf-interpreter
           path: nf-interpreter
           fetch-depth: 1
+          ref: ${{ env.NF_INTERPRETER_REF }}
 
       - name: Copy M5StickS3 target files into nf-interpreter
         run: |
@@ -105,29 +111,36 @@ jobs:
           path: |
             ~/.espressif
             nf-interpreter/build/_deps/esp32_idf-src
-          key: esp-idf-${{ hashFiles('nf-interpreter/targets/ESP32/CMakeLists.txt') }}
+          key: esp-idf-${{ env.ESP_IDF_VERSION }}
 
-      - name: Install ESP-IDF
-        if: steps.cache-idf.outputs.cache-hit != 'true'
+      - name: Ensure ESP-IDF is present and installed
+        run: |
+          if [ ! -d "$IDF_PATH" ]; then
+            mkdir -p "$(dirname "$IDF_PATH")"
+            git clone --recursive --depth 1 --branch "$ESP_IDF_VERSION" https://github.com/espressif/esp-idf.git "$IDF_PATH"
+          fi
+          "$IDF_PATH/install.sh" esp32s3
+
+      - name: Diagnostics
         working-directory: nf-interpreter
         run: |
-          mkdir -p ~/.espressif
-          git clone --recursive --depth 1 --branch v5.5.4 https://github.com/espressif/esp-idf.git ~/.espressif/frameworks/esp-idf-v5.5.4
-          cd ~/.espressif/frameworks/esp-idf-v5.5.4
-          ./install.sh esp32s3
+          python3 --version
+          cmake --version
+          ls -la $IDF_PATH/tools || true
+          sed -n '1,50p' targets/ESP32/defconfig/M5StickS3_defconfig
 
       - name: Configure M5StickS3 build
         working-directory: nf-interpreter
         run: |
-          source ~/.espressif/frameworks/esp-idf-v5.5.4/export.sh
+          source $IDF_PATH/export.sh
           cmake --preset M5StickS3 \
             -DTOOLCHAIN_PREFIX=$HOME/.espressif/tools/xtensa-esp-elf/esp-13.2.0_20240530/xtensa-esp-elf \
-            -DESP32_IDF_PATH=$HOME/.espressif/frameworks/esp-idf-v5.5.4
+            -DESP32_IDF_PATH=$IDF_PATH
 
       - name: Build M5StickS3 firmware
         working-directory: nf-interpreter
         run: |
-          source ~/.espressif/frameworks/esp-idf-v5.5.4/export.sh
+          source $IDF_PATH/export.sh
           cmake --build --preset M5StickS3 --target all
 
       - name: Prepare firmware package for nanoff
