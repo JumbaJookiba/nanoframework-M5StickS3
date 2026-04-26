@@ -20,7 +20,7 @@ jobs:
     name: Build nanoFramework firmware for M5StickS3
     runs-on: ubuntu-24.04
     permissions:
-      contents: read
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -107,31 +107,209 @@ jobs:
             nf-interpreter/build/_deps/esp32_idf-src
           key: esp-idf-${{ hashFiles('nf-interpreter/targets/ESP32/CMakeLists.txt') }}
 
-      - name: Install CMake and Ninja
+      - name: Install ESP-IDF
+        if: steps.cache-idf.outputs.cache-hit != 'true'
+        working-directory: nf-interpreter
         run: |
-          cmake --version
-          ninja --version
+          mkdir -p ~/.espressif
+          git clone --recursive --depth 1 --branch v5.5.4 https://github.com/espressif/esp-idf.git ~/.espressif/frameworks/esp-idf-v5.5.4
+          cd ~/.espressif/frameworks/esp-idf-v5.5.4
+          ./install.sh esp32s3
 
       - name: Configure M5StickS3 build
         working-directory: nf-interpreter
         run: |
+          source ~/.espressif/frameworks/esp-idf-v5.5.4/export.sh
           cmake --preset M5StickS3 \
             -DTOOLCHAIN_PREFIX=$HOME/.espressif/tools/xtensa-esp-elf/esp-13.2.0_20240530/xtensa-esp-elf \
-            -DESP32_IDF_PATH=$HOME/.espressif/frameworks/esp-idf-v5.5.4 \
-            2>&1 || true
-          # Note: Full configure requires ESP-IDF to be installed.
-          # The preset and target files have been validated above.
-          echo "Build configuration files are in place."
+            -DESP32_IDF_PATH=$HOME/.espressif/frameworks/esp-idf-v5.5.4
 
-      - name: Upload target configuration artifacts
+      - name: Build M5StickS3 firmware
+        working-directory: nf-interpreter
+        run: |
+          source ~/.espressif/frameworks/esp-idf-v5.5.4/export.sh
+          cmake --build --preset M5StickS3 --target all
+
+      - name: Prepare firmware package for nanoff
+        run: |
+          # Create firmware package directory
+          mkdir -p firmware-package
+          
+          # Copy required binaries with proper naming
+          cp nf-interpreter/build/M5StickS3/bootloader/bootloader.bin firmware-package/
+          cp nf-interpreter/build/M5StickS3/partition_table/partition-table.bin firmware-package/
+          cp nf-interpreter/build/M5StickS3/nanoCLR.bin firmware-package/
+          
+          # Create flash instructions file for nanoff
+          cat > firmware-package/flash_instructions.txt << 'EOL'
+          M5StickS3 nanoFramework Firmware Flash Instructions
+          ====================================================
+          
+          Flash using nanoff:
+          -------------------
+          nanoff --target M5StickS3 --serialport COMx --update --binfile nanoCLR.bin
+          
+          Manual Flash using esptool (if needed):
+          ---------------------------------------
+          esptool.py --chip esp32s3 --port COMx --baud 921600 write_flash -z \
+            0x0 bootloader.bin \
+            0x8000 partition-table.bin \
+            0x10000 nanoCLR.bin
+          
+          Flash Addresses:
+          ---------------
+          0x0      - bootloader.bin
+          0x8000   - partition-table.bin
+          0x10000  - nanoCLR.bin
+          EOL
+          
+          # Create a README for the firmware package
+          cat > firmware-package/README.md << 'EOL'
+          # M5StickS3 nanoFramework Firmware
+          
+          This package contains the nanoFramework firmware binaries for the M5StickS3 device.
+          
+          ## Contents
+          
+          - `bootloader.bin` - ESP32-S3 bootloader (flash at 0x0)
+          - `partition-table.bin` - Flash partition table (flash at 0x8000)
+          - `nanoCLR.bin` - nanoFramework CLR runtime (flash at 0x10000)
+          
+          ## Installation using nanoff
+          
+          1. Install nanoff tool:
+             ```
+             dotnet tool install -g nanoff
+             ```
+          
+          2. Connect your M5StickS3 via USB
+          
+          3. Flash the firmware:
+             ```
+             nanoff --target M5StickS3 --serialport COMx --update --binfile nanoCLR.bin
+             ```
+             
+             Replace `COMx` with your device's COM port (Windows) or `/dev/ttyUSBx` (Linux/Mac)
+          
+          ## Manual Installation using esptool
+          
+          If nanoff doesn't recognize M5StickS3, use esptool directly:
+          
+          1. Install esptool:
+             ```
+             pip install esptool
+             ```
+          
+          2. Flash all binaries:
+             ```
+             esptool.py --chip esp32s3 --port COMx --baud 921600 write_flash -z \
+               0x0 bootloader.bin \
+               0x8000 partition-table.bin \
+               0x10000 nanoCLR.bin
+             ```
+          
+          ## Device Specifications
+          
+          - **MCU**: ESP32-S3-PICO-1-N8R8 (8MB Flash, 8MB PSRAM)
+          - **PSRAM**: OPI PSRAM enabled
+          - **Display**: ST7789P3 (80x160 LCD)
+          - **USB**: Native USB CDC support
+          - **WiFi**: 802.11 b/g/n
+          
+          ## Verification
+          
+          After flashing, the device should:
+          1. Show nanoFramework boot messages on serial console (115200 baud)
+          2. Be discoverable by Visual Studio with nanoFramework extension
+          3. Accept C# application deployments
+          
+          ## Support
+          
+          For issues, visit: https://github.com/JumbaJookiba/nanoframework-M5StickS3/issues
+          EOL
+          
+          # Create version info file
+          echo "Build Date: $(date -u +%Y-%m-%d_%H:%M:%S_UTC)" > firmware-package/VERSION.txt
+          echo "Git Commit: ${{ github.sha }}" >> firmware-package/VERSION.txt
+          echo "Git Branch: ${{ github.ref_name }}" >> firmware-package/VERSION.txt
+          
+          # Create ZIP package for easy distribution
+          cd firmware-package
+          zip -r ../M5StickS3-firmware-package.zip .
+          cd ..
+          
+          # List contents for verification
+          echo "=== Firmware Package Contents ==="
+          ls -lh firmware-package/
+          echo "=== Package ZIP Created ==="
+          ls -lh M5StickS3-firmware-package.zip
+
+      - name: Upload firmware binaries (individual files)
         uses: actions/upload-artifact@v4
         with:
-          name: M5StickS3-target-config
-          path: |
-            targets/ESP32/M5StickS3/
-            targets/ESP32/defconfig/M5StickS3_defconfig
-            targets/ESP32/_IDF/sdkconfig.default_octal.esp32s3
-            targets/ESP32/_IDF/esp32s3/partitions_nanoclr_8mb.csv
+          name: M5StickS3-firmware-binaries
+          path: firmware-package/
+          retention-days: 90
+
+      - name: Upload firmware package (ZIP)
+        uses: actions/upload-artifact@v4
+        with:
+          name: M5StickS3-firmware-package
+          path: M5StickS3-firmware-package.zip
+          retention-days: 90
+
+      - name: Create Release
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.release == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.run_number }}
+          name: M5StickS3 Firmware v${{ github.run_number }}
+          body: |
+            ## M5StickS3 nanoFramework Firmware Release
+            
+            ### Installation
+            
+            **Using nanoff (recommended):**
+            ```bash
+            dotnet tool install -g nanoff
+            nanoff --target M5StickS3 --serialport COMx --update --binfile nanoCLR.bin
+            ```
+            
+            **Using esptool (manual):**
+            ```bash
+            pip install esptool
+            esptool.py --chip esp32s3 --port COMx --baud 921600 write_flash -z \
+              0x0 bootloader.bin \
+              0x8000 partition-table.bin \
+              0x10000 nanoCLR.bin
+            ```
+            
+            ### What's Included
+            - ✅ ESP32-S3 Bootloader
+            - ✅ Partition Table (8MB configuration)
+            - ✅ nanoFramework CLR Runtime
+            - ✅ ST7789P3 Display Driver
+            - ✅ USB CDC Support
+            - ✅ WiFi Support
+            - ✅ OPI PSRAM Support (8MB)
+            
+            ### Build Information
+            - **Build Date**: ${{ github.event.head_commit.timestamp }}
+            - **Commit**: ${{ github.sha }}
+            - **Branch**: ${{ github.ref_name }}
+            
+            Download the complete firmware package below.
+          files: |
+            M5StickS3-firmware-package.zip
+            firmware-package/bootloader.bin
+            firmware-package/partition-table.bin
+            firmware-package/nanoCLR.bin
+            firmware-package/README.md
+            firmware-package/flash_instructions.txt
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   validate-config:
     name: Validate M5StickS3 configuration files
@@ -152,7 +330,7 @@ jobs:
           grep -q "CONFIG_ESP32_USB_CDC=y" targets/ESP32/defconfig/M5StickS3_defconfig
           grep -q "CONFIG_GRAPHICS_DISPLAY_ST7789P3=y" targets/ESP32/defconfig/M5StickS3_defconfig
           grep -q "CONFIG_TARGET_SERIES=\"ESP32_S3\"" targets/ESP32/defconfig/M5StickS3_defconfig
-          echo "defconfig validation passed!"
+          echo "✅ defconfig validation passed!"
 
       - name: Validate sdkconfig
         run: |
@@ -161,7 +339,7 @@ jobs:
           grep -q "CONFIG_SPIRAM_MODE_OCT=y" targets/ESP32/_IDF/sdkconfig.default_octal.esp32s3
           grep -q "CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y" targets/ESP32/_IDF/sdkconfig.default_octal.esp32s3
           grep -q "partitions_nanoclr_8mb.csv" targets/ESP32/_IDF/sdkconfig.default_octal.esp32s3
-          echo "sdkconfig validation passed!"
+          echo "✅ sdkconfig validation passed!"
 
       - name: Validate partition table
         run: |
@@ -169,7 +347,7 @@ jobs:
           grep -q "factory" targets/ESP32/_IDF/esp32s3/partitions_nanoclr_8mb.csv
           grep -q "deploy" targets/ESP32/_IDF/esp32s3/partitions_nanoclr_8mb.csv
           grep -q "config" targets/ESP32/_IDF/esp32s3/partitions_nanoclr_8mb.csv
-          echo "Partition table validation passed!"
+          echo "✅ Partition table validation passed!"
 
       - name: Validate target files exist
         run: |
@@ -188,9 +366,9 @@ jobs:
           )
           for f in "${required_files[@]}"; do
             if [ ! -f "$f" ]; then
-              echo "MISSING: $f"
+              echo "❌ MISSING: $f"
               exit 1
             fi
-            echo "OK: $f"
+            echo "✅ OK: $f"
           done
-          echo "All target files present!"
+          echo "✅ All target files present!"
