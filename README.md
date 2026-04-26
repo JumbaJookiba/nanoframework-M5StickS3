@@ -104,67 +104,60 @@ targets/
 
 ## Building the Firmware
 
-### Prerequisites
+### Quick Links
 
-- [nf-interpreter](https://github.com/nanoframework/nf-interpreter)
-- [ESP-IDF v5.5.4](https://github.com/espressif/esp-idf/releases/tag/v5.5.4)
-- CMake ≥ 3.21
-- Ninja build system
+- **📖 [Complete Build Instructions](BUILD_INSTRUCTIONS.md)** - Detailed step-by-step guide for local builds
+- **🔧 [Quick Fix for Common Errors](QUICKFIX.md)** - Fix "user-tools-repos.json not found" error
+- **☁️ Use GitHub Actions** - Build firmware automatically without local setup (see below)
 
-### Steps
+### Building Locally
 
-1. **Clone nf-interpreter**
+For complete local build instructions, see **[BUILD_INSTRUCTIONS.md](BUILD_INSTRUCTIONS.md)**.
 
-   ```bash
-   git clone https://github.com/nanoframework/nf-interpreter.git
-   cd nf-interpreter
-   ```
+**Quick summary:**
 
-2. **Copy M5StickS3 target files**
+1. Clone nf-interpreter
+2. Copy M5StickS3 target files
+3. **Create required config files** (see [QUICKFIX.md](QUICKFIX.md))
+4. Install ESP-IDF v5.5.4
+5. Configure and build
 
-   ```bash
-   # From the root of this repository:
-   cp -r targets/ESP32/M5StickS3        <nf-interpreter>/targets/ESP32/M5StickS3
-   cp targets/ESP32/defconfig/M5StickS3_defconfig \
-      <nf-interpreter>/targets/ESP32/defconfig/M5StickS3_defconfig
-   cp targets/ESP32/_IDF/sdkconfig.default_octal.esp32s3 \
-      <nf-interpreter>/targets/ESP32/_IDF/sdkconfig.default_octal.esp32s3
-   cp targets/ESP32/_IDF/esp32s3/partitions_nanoclr_8mb.csv \
-      <nf-interpreter>/targets/ESP32/_IDF/esp32s3/partitions_nanoclr_8mb.csv
-   ```
+### Building with GitHub Actions (Recommended)
 
-3. **Add M5StickS3 preset to CMakePresets.json**
+The easiest way to get firmware binaries is to use the automated GitHub Actions workflow:
 
-   Add the following entry to `targets/ESP32/CMakePresets.json` in the `configurePresets` array:
+1. **Fork this repository** (or use it directly if you have write access)
+2. Go to **Actions** tab
+3. Select **"Build M5StickS3 Firmware"** workflow
+4. Click **"Run workflow"**
+5. Select branch and optionally create a release
+6. **Download** the firmware artifacts after the build completes
 
-   ```json
-   {
-     "name": "M5StickS3",
-     "inherits": [
-       "xtensa-esp32s3-preset",
-       "user-tools-repos",
-       "user-prefs"
-     ],
-     "hidden": false,
-     "cacheVariables": {
-       "TARGET_NAME": "${presetName}",
-       "NF_TARGET_DEFCONFIG": "targets/ESP32/defconfig/M5StickS3_defconfig"
-     }
-   }
-   ```
+The workflow automatically:
+- ✅ Creates all required configuration files
+- ✅ Builds bootloader, partition table, and nanoCLR
+- ✅ Packages firmware for easy flashing
+- ✅ Provides detailed flash instructions
 
-4. **Configure and build**
+### Flashing the Firmware
 
-   ```bash
-   cmake --preset M5StickS3
-   cmake --build --preset M5StickS3
-   ```
+After obtaining the firmware (via Actions or local build):
 
-5. **Flash the firmware**
+**Using nanoff (recommended):**
+```bash
+dotnet tool install -g nanoff
+nanoff --target M5StickS3 --serialport COMx --update --binfile nanoCLR.bin
+```
 
-   ```bash
-   esptool.py --chip esp32s3 --port /dev/ttyUSB0 write_flash 0x0 nanoCLR.bin
-   ```
+**Using esptool (manual):**
+```bash
+esptool.py --chip esp32s3 --port COMx --baud 921600 write_flash -z \
+  0x0 bootloader.bin \
+  0x8000 partition-table.bin \
+  0x10000 nanoCLR.bin
+```
+
+Replace `COMx` with your device port (`COM3`, `/dev/ttyUSB0`, etc.)
 
 ## CI/CD
 

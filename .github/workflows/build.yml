@@ -52,6 +52,107 @@ jobs:
                nf-interpreter/targets/ESP32/_IDF/esp32s3/partitions_nanoclr_8mb.csv
           fi
 
+      - name: Create user configuration files
+        run: |
+          # Create config directory
+          mkdir -p nf-interpreter/config
+
+          # Create user-tools-repos.json with ESP-IDF paths
+          cat > nf-interpreter/config/user-tools-repos.json << 'EOF'
+          {
+            "toolsRepos": {
+              "ESP32_TOOLS_PATH": "$env{HOME}/.espressif/tools",
+              "ESP32_IDF_PATH": "$env{HOME}/.espressif/frameworks/esp-idf-v5.5.4",
+              "ESP32_LIBS_PATH": "$env{HOME}/.espressif/frameworks/esp-idf-v5.5.4"
+            }
+          }
+          EOF
+
+          # Create user-prefs.json with build preferences
+          cat > nf-interpreter/config/user-prefs.json << 'EOF'
+          {
+            "configurePresets": [
+              {
+                "name": "user-prefs",
+                "hidden": true,
+                "cacheVariables": {
+                  "CMAKE_BUILD_TYPE": "Release"
+                }
+              }
+            ]
+          }
+          EOF
+
+          # Verify files were created
+          echo "========================================="
+          echo "Verifying configuration files..."
+          echo "========================================="
+
+          if [ -f nf-interpreter/config/user-tools-repos.json ]; then
+            echo "✅ user-tools-repos.json created successfully"
+            echo "Content:"
+            cat nf-interpreter/config/user-tools-repos.json
+          else
+            echo "❌ ERROR: user-tools-repos.json was NOT created!"
+            exit 1
+          fi
+
+          echo ""
+
+          if [ -f nf-interpreter/config/user-prefs.json ]; then
+            echo "✅ user-prefs.json created successfully"
+            echo "Content:"
+            cat nf-interpreter/config/user-prefs.json
+          else
+            echo "❌ ERROR: user-prefs.json was NOT created!"
+            exit 1
+          fi
+
+          echo ""
+          echo "========================================="
+          echo "Full path verification:"
+          echo "========================================="
+          ls -la nf-interpreter/config/
+          echo ""
+          echo "Absolute path:"
+          realpath nf-interpreter/config/user-tools-repos.json
+          realpath nf-interpreter/config/user-prefs.json
+
+      - name: Debug CMake preset structure
+        run: |
+          echo "========================================="
+          echo "Checking root CMakePresets.json"
+          echo "========================================="
+          if [ -f nf-interpreter/CMakePresets.json ]; then
+            echo "Found root CMakePresets.json"
+            echo "Full content:"
+            cat nf-interpreter/CMakePresets.json
+          else
+            echo "No root CMakePresets.json found"
+          fi
+
+          echo ""
+          echo "========================================="
+          echo "Checking ESP32 CMakePresets.json"
+          echo "========================================="
+          if [ -f nf-interpreter/targets/ESP32/CMakePresets.json ]; then
+            echo "Found ESP32 CMakePresets.json"
+            cat nf-interpreter/targets/ESP32/CMakePresets.json | head -50
+          else
+            echo "❌ ESP32 CMakePresets.json NOT found!"
+          fi
+
+          echo ""
+          echo "========================================="
+          echo "Checking for ThreadX presets (source of error)"
+          echo "========================================="
+          if [ -f nf-interpreter/targets/ThreadX/SiliconLabs/SL_STK3701A/CMakePresets.json ]; then
+            echo "Found ThreadX/SiliconLabs preset file"
+            cat nf-interpreter/targets/ThreadX/SiliconLabs/SL_STK3701A/CMakePresets.json | head -30
+          else
+            echo "ThreadX preset file not found at expected location"
+          fi
+
       - name: Add M5StickS3 preset to CMakePresets.json
         run: |
           python3 << 'EOF'
@@ -117,17 +218,41 @@ jobs:
           ./install.sh esp32s3
 
       - name: Configure M5StickS3 build
-        working-directory: nf-interpreter
         run: |
           source ~/.espressif/frameworks/esp-idf-v5.5.4/export.sh
+
+          # Set environment variables for the preset
+          export ESP32_IDF_PATH=$HOME/.espressif/frameworks/esp-idf-v5.5.4
+          export ESP32_TOOLS_PATH=$HOME/.espressif/tools
+          export ESP32_LIBS_PATH=$HOME/.espressif/frameworks/esp-idf-v5.5.4
+
+          # Find the actual xtensa toolchain path
+          XTENSA_TOOLCHAIN=$(find $HOME/.espressif/tools/xtensa-esp-elf -type d -name "xtensa-esp-elf" | grep -E "esp-[0-9]" | head -1)
+          echo "========================================="
+          echo "Found xtensa toolchain at: $XTENSA_TOOLCHAIN"
+          echo "========================================="
+
+          # Debug: Verify config files are still accessible
+          echo ""
+          echo "Verifying config files before CMake..."
+          ls -la nf-interpreter/config/
+
+          echo ""
+          echo "Current directory: $(pwd)"
+          echo "Running CMake configure from ESP32 targets directory..."
+
+          # Run CMake from the ESP32 targets directory
+          cd nf-interpreter/targets/ESP32
+
           cmake --preset M5StickS3 \
-            -DTOOLCHAIN_PREFIX=$HOME/.espressif/tools/xtensa-esp-elf/esp-13.2.0_20240530/xtensa-esp-elf \
-            -DESP32_IDF_PATH=$HOME/.espressif/frameworks/esp-idf-v5.5.4
+            -DTOOLCHAIN_PREFIX=$XTENSA_TOOLCHAIN \
+            -DESP32_IDF_PATH=$ESP32_IDF_PATH \
+            -DESP32_TOOLS_PATH=$ESP32_TOOLS_PATH
 
       - name: Build M5StickS3 firmware
-        working-directory: nf-interpreter
         run: |
           source ~/.espressif/frameworks/esp-idf-v5.5.4/export.sh
+          cd nf-interpreter/targets/ESP32
           cmake --build --preset M5StickS3 --target all
 
       - name: Prepare firmware package for nanoff
