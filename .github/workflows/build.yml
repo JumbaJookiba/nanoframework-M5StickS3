@@ -116,9 +116,10 @@ jobs:
           mkdir -p nf-interpreter/targets-community
           echo '{"version":4,"configurePresets":[]}' > nf-interpreter/targets-community/CMakePresets.json
 
-          # Create config/user-tools-repos.json — preset name must match what M5StickS3 inherits
+          # Create config/user-tools-repos.json — preset name must match what M5StickS3 inherits.
+          # Use quoted heredoc so shell does not expand $env{...}; cmake resolves it at configure time.
           mkdir -p nf-interpreter/config
-          cat > nf-interpreter/config/user-tools-repos.json << JSONEOF
+          cat > nf-interpreter/config/user-tools-repos.json << 'JSONEOF'
           {
               "version": 4,
               "configurePresets": [
@@ -126,7 +127,7 @@ jobs:
                       "name": "user-tools-repos",
                       "hidden": true,
                       "cacheVariables": {
-                          "ESP32_IDF_PATH": "${IDF_PATH}"
+                          "ESP32_IDF_PATH": "$env{IDF_PATH}"
                       }
                   }
               ]
@@ -134,8 +135,9 @@ jobs:
           JSONEOF
 
           # Create config/user-prefs.json — must define user-prefs configure preset
-          # and base-user build preset (which the ESP32 build presets inherit from)
-          cat > nf-interpreter/config/user-prefs.json << JSONEOF
+          # and base-user build preset (which the ESP32 build presets inherit from).
+          # BUILD_VERSION is a placeholder for CI builds; set via workflow input for releases.
+          cat > nf-interpreter/config/user-prefs.json << 'JSONEOF'
           {
               "version": 4,
               "configurePresets": [
