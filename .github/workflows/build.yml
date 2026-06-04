@@ -44,7 +44,8 @@ jobs:
           # Copy target directory
           cp -r targets/ESP32/M5StickS3 nf-interpreter/targets/ESP32/M5StickS3
 
-          # Copy defconfig
+          # Copy defconfig (directory may not exist in pinned nf-interpreter)
+          mkdir -p nf-interpreter/targets/ESP32/defconfig
           cp targets/ESP32/defconfig/M5StickS3_defconfig \
              nf-interpreter/targets/ESP32/defconfig/M5StickS3_defconfig
 
@@ -67,10 +68,10 @@ jobs:
           with open(presets_file, "r") as f:
               data = json.load(f)
 
-          # Check if M5StickS3 preset already exists
+          # Add configure preset if not already present
           existing = [p for p in data.get("configurePresets", []) if p.get("name") == "M5StickS3"]
           if existing:
-              print("M5StickS3 preset already exists, skipping.")
+              print("M5StickS3 configure preset already exists, skipping.")
           else:
               m5sticks3_preset = {
                   "name": "M5StickS3",
@@ -86,10 +87,80 @@ jobs:
                   }
               }
               data["configurePresets"].append(m5sticks3_preset)
-              with open(presets_file, "w") as f:
-                  json.dump(data, f, indent=2)
-              print("Added M5StickS3 preset to CMakePresets.json")
+              print("Added M5StickS3 configure preset to CMakePresets.json")
+
+          # Add build preset if not already present
+          existing_build = [p for p in data.get("buildPresets", []) if p.get("name") == "M5StickS3"]
+          if existing_build:
+              print("M5StickS3 build preset already exists, skipping.")
+          else:
+              m5sticks3_build = {
+                  "name": "M5StickS3",
+                  "displayName": "M5StickS3",
+                  "inherits": "base-user",
+                  "configurePreset": "M5StickS3"
+              }
+              if "buildPresets" not in data:
+                  data["buildPresets"] = []
+              data["buildPresets"].append(m5sticks3_build)
+              print("Added M5StickS3 build preset to CMakePresets.json")
+
+          with open(presets_file, "w") as f:
+              json.dump(data, f, indent=2)
           EOF
+
+      - name: Create CMake config files for nf-interpreter
+        run: |
+          # Create stub for targets-community submodule (not initialized in shallow clone)
+          # The root CMakePresets.json includes targets-community/CMakePresets.json
+          mkdir -p nf-interpreter/targets-community
+          echo '{"version":4,"configurePresets":[]}' > nf-interpreter/targets-community/CMakePresets.json
+
+          # Create config/user-tools-repos.json — preset name must match what M5StickS3 inherits
+          mkdir -p nf-interpreter/config
+          cat > nf-interpreter/config/user-tools-repos.json << JSONEOF
+          {
+              "version": 4,
+              "configurePresets": [
+                  {
+                      "name": "user-tools-repos",
+                      "hidden": true,
+                      "cacheVariables": {
+                          "ESP32_IDF_PATH": "${IDF_PATH}"
+                      }
+                  }
+              ]
+          }
+          JSONEOF
+
+          # Create config/user-prefs.json — must define user-prefs configure preset
+          # and base-user build preset (which the ESP32 build presets inherit from)
+          cat > nf-interpreter/config/user-prefs.json << JSONEOF
+          {
+              "version": 4,
+              "configurePresets": [
+                  {
+                      "name": "user-prefs",
+                      "hidden": true,
+                      "cacheVariables": {
+                          "CMAKE_BUILD_TYPE": "Release",
+                          "BUILD_VERSION": "0.9.99.999",
+                          "BUILD_VERBOSE": "OFF",
+                          "NF_FEATURE_WATCHDOG": "ON"
+                      }
+                  }
+              ],
+              "buildPresets": [
+                  {
+                      "name": "base-user",
+                      "hidden": true,
+                      "cleanFirst": false,
+                      "configuration": "Release",
+                      "verbose": false
+                  }
+              ]
+          }
+          JSONEOF
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -134,7 +205,6 @@ jobs:
         run: |
           source $IDF_PATH/export.sh
           cmake --preset M5StickS3 \
-            -DTOOLCHAIN_PREFIX=$HOME/.espressif/tools/xtensa-esp-elf/esp-13.2.0_20240530/xtensa-esp-elf \
             -DESP32_IDF_PATH=$IDF_PATH
 
       - name: Build M5StickS3 firmware
